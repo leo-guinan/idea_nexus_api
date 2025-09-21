@@ -1,32 +1,28 @@
-version: '3.8'
-
-# Production-specific overrides
 services:
-  mastra-server:
-    image: skippy-mastra:latest
+  mastra-api:
     build:
-      cache_from:
-        - skippy-mastra:latest
-      args:
-        - BUILDKIT_INLINE_CACHE=1
+      context: .
+      dockerfile: Dockerfile.simple
+    image: mastra-api:latest
+    restart: unless-stopped
+    env_file: ./.env
     environment:
       - NODE_ENV=production
-      - MASTRA_LOG_LEVEL=warn
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  chroma:
+      - PORT=4112
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MASTRA_LOG_LEVEL=${MASTRA_LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4112/api || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${ROUTER_NAME}.rule=Host(`${SITE_HOST}`)"
+      - "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure"
+      - "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=le"
+      - "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=4112"
     deploy:
       resources:
         limits:
