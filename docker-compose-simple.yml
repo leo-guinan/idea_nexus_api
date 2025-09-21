@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # Mastra Server with Skippy Agent
+  mastra-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: skippy-mastra
+    environment:
+      - NODE_ENV=production
+      - PORT=4112
+      - DB_PATH=/app/data/skippy.db
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MASTRA_LOG_LEVEL=${MASTRA_LOG_LEVEL:-info}
+    ports:
+      - "4113:4112"
+    restart: unless-stopped
+    volumes:
+      # Persist SQLite database
+      - sqlite_data:/app/data
+      # Optional: mount logs
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4112/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  sqlite_data:
+    driver: local

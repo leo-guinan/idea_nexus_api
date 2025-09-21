@@ -1,0 +1,42 @@
+version: '3.8'
+
+# Production-specific overrides
+services:
+  mastra-server:
+    image: skippy-mastra:latest
+    build:
+      cache_from:
+        - skippy-mastra:latest
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    environment:
+      - NODE_ENV=production
+      - MASTRA_LOG_LEVEL=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  chroma:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
