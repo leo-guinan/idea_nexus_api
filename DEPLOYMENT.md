@@ -1,17 +1,49 @@
 # Deployment Instructions for Mastra API with indie-agent
 
-This guide explains how to deploy the Mastra API using indie-agent with Traefik reverse proxy.
+This guide explains how to deploy the Mastra API using indie-agent with Traefik reverse proxy and GitHub Actions for building Docker images.
+
+## Architecture
+
+- **GitHub Actions**: Builds Docker images automatically on push to main
+- **GitHub Container Registry (ghcr.io)**: Stores pre-built Docker images
+- **indie-agent**: Manages deployments and auto-updates
+- **Traefik**: Handles SSL/TLS and reverse proxy
 
 ## Prerequisites
 
-1. A server with Docker and Docker Compose installed
-2. indie-agent CLI installed
+1. A server with Docker and Docker Compose installed (minimum 1GB RAM)
+2. indie-agent CLI installed on the server
 3. Traefik reverse proxy running (typically managed by indie-agent)
 4. A domain name pointed to your server
+5. GitHub repository with Actions enabled
 
-## Setup Steps
+## Initial Setup
 
-### 1. Install indie-agent CLI
+### 1. GitHub Actions Setup
+
+The GitHub Action is already configured in `.github/workflows/docker-build.yml`. It will:
+- Trigger on push to main branch
+- Build multi-platform Docker images (amd64 and arm64)
+- Push to GitHub Container Registry (ghcr.io)
+- Tag images with branch name and SHA
+
+No additional setup needed - it uses the built-in GITHUB_TOKEN.
+
+### 2. First Build
+
+Push your code to trigger the first build:
+
+```bash
+git add .
+git commit -m "Initial deployment setup"
+git push origin main
+```
+
+Monitor the build at: https://github.com/leo-guinan/idea_nexus_api/actions
+
+### 3. Server Setup
+
+#### Install indie-agent CLI
 
 ```bash
 # Install the indie-agent CLI wrapper to /usr/local/bin
@@ -19,135 +51,184 @@ curl -L https://github.com/indie-agent/indie-agent/releases/latest/download/indi
 chmod +x /usr/local/bin/indie-agent
 ```
 
-### 2. Configure Environment Variables
+#### Configure Environment Variables
 
-Update the `.env` file with your configuration:
+Create `.env` file on the server:
 
 ```bash
 # Required: Your OpenAI API key
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Required: Traefik routing configuration
-ROUTER_NAME=mastra-api           # Name for the Traefik router
-SITE_HOST=api.yourdomain.com     # Your domain for the API
+ROUTER_NAME=mastra-api
+SITE_HOST=api.ideanexusventures.com
 
 # Optional: Mastra configuration
-MASTRA_LOG_LEVEL=info            # Log level (debug, info, warn, error)
+MASTRA_LOG_LEVEL=info
 ```
 
-### 3. Register the Application with indie-agent
+### 4. Register with indie-agent
 
-Register your Mastra API with indie-agent:
+Register your Mastra API:
 
 ```bash
 sudo indie-agent register mastra-api \
-  git@github.com:yourusername/inv-api.git \
-  https://api.yourdomain.com/api \
+  git@github.com:leo-guinan/idea_nexus_api.git \
+  https://api.ideanexusventures.com/api \
   main true
 ```
 
-Parameters:
-- `mastra-api` - Application name
-- `git@github.com:yourusername/inv-api.git` - Your Git repository URL
-- `https://api.yourdomain.com/api` - Health check URL
-- `main` - Git branch to deploy (default: main)
-- `true` - Enable automatic image updates (optional)
+### 5. Initial Deployment
 
-### 4. Deploy the Application
+Since images are built in GitHub Actions, the server only needs to pull and run:
 
-The indie-agent timer runs every 5 minutes, but you can force an immediate deployment:
+```bash
+# Pull the latest image (public repository, no auth needed)
+docker pull ghcr.io/leo-guinan/idea_nexus_api:latest
+
+# Deploy using indie-agent
+sudo indie-agent deploy mastra-api
+```
+
+Or use the provided deploy script:
+
+```bash
+./deploy.sh
+```
+
+## Continuous Deployment Workflow
+
+1. **Development**: Make changes locally
+2. **Push**: `git push origin main`
+3. **Build**: GitHub Actions builds and pushes image (~2-3 minutes)
+4. **Deploy**: indie-agent automatically pulls and deploys (runs every 5 minutes)
+
+To force immediate deployment after build:
 
 ```bash
 sudo indie-agent deploy mastra-api
 ```
 
-### 5. Verify Deployment
-
-Check that your API is running:
-
-```bash
-# Check container status
-docker ps | grep mastra-api
-
-# Test the API endpoint
-curl https://api.yourdomain.com/api
-
-# Check available agents
-curl https://api.yourdomain.com/api/agents
-```
-
 ## Docker Compose Configuration
 
-The `docker-compose.prod.yml` file includes:
+The `docker-compose.yml` now uses pre-built images:
 
-- **Traefik labels** for automatic SSL/TLS certificate management
-- **Health checks** for monitoring
-- **Resource limits** for production stability
-- **Log rotation** to prevent disk space issues
-
-## File Structure
-
-```
-inv-api/
-├── docker-compose.prod.yml  # Production Docker Compose with Traefik labels
-├── Dockerfile.simple        # Simplified Dockerfile without databases
-├── .env                     # Environment variables (not in Git)
-├── .env.example            # Example environment file (in Git)
-└── src/                    # Application source code
+```yaml
+services:
+  mastra-api:
+    image: ghcr.io/leo-guinan/idea_nexus_api:latest
+    # ... rest of configuration
 ```
 
-## Monitoring and Logs
+Benefits:
+- ✅ No building on server (saves resources)
+- ✅ Consistent builds across environments
+- ✅ Faster deployments (just pull and run)
+- ✅ Build cache optimization in GitHub Actions
 
-View application logs:
+## Monitoring
+
+### Check Deployment Status
 
 ```bash
-# View container logs
-docker logs mastra-api
+# View container status
+docker ps | grep mastra-api
 
-# Follow logs in real-time
-docker logs -f mastra-api
+# Check container health
+docker inspect mastra-api --format='{{.State.Health.Status}}'
 
-# View last 100 lines
-docker logs --tail 100 mastra-api
+# View logs
+docker logs mastra-api --tail 100 -f
+
+# Test API
+curl https://api.ideanexusventures.com/api
 ```
+
+### GitHub Actions Status
+
+Monitor builds at: https://github.com/leo-guinan/idea_nexus_api/actions
 
 ## Troubleshooting
 
-### Container won't start
-- Check environment variables in `.env`
-- Verify OpenAI API key is valid
-- Check Docker logs: `docker logs mastra-api`
+### Image Pull Issues
 
-### SSL certificate issues
-- Ensure domain is properly pointed to server
-- Check Traefik logs: `docker logs traefik`
-- Verify Traefik labels in `docker-compose.prod.yml`
+If the repository is private, you'll need to authenticate:
 
-### API not accessible
-- Check if container is running: `docker ps`
-- Verify health check: `docker inspect mastra-api | grep -i health`
-- Test locally: `docker exec mastra-api curl http://localhost:4112/api`
+```bash
+# Login to GitHub Container Registry
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
-## Updates
+# Or use a Personal Access Token (PAT)
+docker login ghcr.io -u USERNAME -p YOUR_PAT
+```
 
-To update the application:
+### Container Won't Start
 
-1. Push changes to your Git repository
-2. Wait for indie-agent timer (5 minutes) or force update:
-   ```bash
-   sudo indie-agent deploy mastra-api
-   ```
+1. Check image was pulled: `docker images | grep idea_nexus_api`
+2. Check logs: `docker logs mastra-api`
+3. Verify environment variables in `.env`
+4. Check health endpoint: `curl http://localhost:4112/api`
 
-The deployment will:
-1. Pull latest code from Git
-2. Build new Docker image
-3. Recreate container with zero-downtime deployment
-4. Automatic rollback on failure
+### Build Failures in GitHub Actions
+
+1. Check Actions tab in GitHub repository
+2. Review build logs for errors
+3. Ensure Dockerfile.simple is correct
+4. Verify multi-platform build compatibility
+
+## Manual Deployment (Without indie-agent)
+
+If you need to deploy manually:
+
+```bash
+# Pull latest image
+docker pull ghcr.io/leo-guinan/idea_nexus_api:latest
+
+# Stop existing container
+docker compose down
+
+# Start new container
+docker compose up -d
+
+# Check status
+docker ps
+```
+
+## Rollback
+
+To rollback to a previous version:
+
+```bash
+# List available tags
+docker images ghcr.io/leo-guinan/idea_nexus_api
+
+# Pull specific version (using git SHA)
+docker pull ghcr.io/leo-guinan/idea_nexus_api:main-abc123
+
+# Update docker-compose.yml to use specific tag
+# Then restart
+docker compose up -d
+```
 
 ## Security Notes
 
-- Never commit `.env` file to Git
-- Keep OpenAI API key secure
-- Use environment-specific configuration
-- Enable rate limiting in production
-- Monitor API usage and costs
+- GitHub Actions uses repository secrets automatically
+- Images in ghcr.io inherit repository visibility (public/private)
+- Never commit `.env` file with secrets
+- Use environment-specific configurations
+- Monitor resource usage to prevent server overload
+
+## Resource Requirements
+
+Minimum server requirements:
+- **RAM**: 1GB (512MB for container + system overhead)
+- **CPU**: 1 core
+- **Disk**: 5GB (for Docker images and logs)
+- **Network**: Stable connection for pulling images
+
+## Cost Optimization
+
+- GitHub Actions: 2,000 minutes/month free for public repos
+- GitHub Container Registry: Free for public repos
+- Build time: ~2-3 minutes per build
+- Image size: ~200MB compressed

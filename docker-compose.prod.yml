@@ -1,9 +1,6 @@
 services:
   mastra-api:
-    build:
-      context: .
-      dockerfile: Dockerfile.simple
-    image: mastra-api:latest
+    image: ghcr.io/leo-guinan/idea_nexus_api:latest
     restart: unless-stopped
     env_file: ./.env
     environment:
