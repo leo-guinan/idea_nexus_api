@@ -1,0 +1,45 @@
+services:
+  mastra-api:
+    image: ghcr.io/leo-guinan/idea_nexus_api:latest
+    restart: unless-stopped
+    env_file: ./.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4112
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MASTRA_LOG_LEVEL=${MASTRA_LOG_LEVEL:-info}
+    healthcheck:
+      # Using node to check health since curl might not be available
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4112/api', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${ROUTER_NAME}.rule=Host(`${SITE_HOST}`)"
+      - "traefik.http.routers.${ROUTER_NAME}.entrypoints=websecure"
+      - "traefik.http.routers.${ROUTER_NAME}.tls.certresolver=le"
+      - "traefik.http.services.${ROUTER_NAME}.loadbalancer.server.port=4112"
+    networks:
+      - default
+      - traefik
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traefik:
+    external: true
+  default:
+    driver: bridge
