@@ -9,11 +9,15 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MASTRA_LOG_LEVEL=${MASTRA_LOG_LEVEL:-info}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:4112/api || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"const http=require('http');const req=http.request({host:'127.0.0.1',port:process.env.PORT||4112,path:'/api',timeout:2000},res=>process.exit(res.statusCode===200?0:1));req.on('error',()=>process.exit(1));req.end();\""
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${ROUTER_NAME}.rule=Host(`${SITE_HOST}`)"
